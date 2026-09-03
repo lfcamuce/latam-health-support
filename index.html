@@ -15366,6 +15366,14 @@ function App() {
   }, "Acesso restrito.")), active === "config" && /*#__PURE__*/React.createElement(ConfigTab, props)));
 }
 
+  // Initialize Supabase client (SB_URL and SB_KEY defined in compiled code above)
+  try{
+    if(!window._supabaseClient){
+      window._supabaseClient=supabase.createClient(SB_URL,SB_KEY);
+      console.log("Supabase client initialized");
+    }
+  }catch(e){console.error("Failed to init Supabase:",e);}
+
   ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 })();
 </script>
