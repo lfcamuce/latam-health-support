@@ -287,6 +287,7 @@ const INIT = {
   invCnt: 0,
   atendCnt: 0,
   auditLog: [],
+  invoicesTrash: [],
   termo: {
     texto: "",
     periodoDias: 365,
@@ -4245,7 +4246,14 @@ function EditInvModal({
         titulos: newTitulos
       };
     });
-    aLog(save, user, "Editar", "Invoices", inv.numero);
+    // Log detalhado: quais atendimentos foram adicionados/removidos
+    const addedAts = aList.filter(a => aIds.includes(a.id));
+    const removedAts = aList.filter(a => rIds.includes(a.id));
+    const parts = [inv.numero, "Total: " + fmtBRL(fTot)];
+    if (addedAts.length) parts.push("+" + addedAts.length + " add: " + addedAts.map(a => (a.codigo || "?") + " " + (a.nomePaciente || "?").slice(0, 25)).join(", "));
+    if (removedAts.length) parts.push("-" + removedAts.length + " rem: " + removedAts.map(a => (a.codigo || "?") + " " + (a.nomePaciente || "?").slice(0, 25)).join(", "));
+    if (!addedAts.length && !removedAts.length) parts.push("(sem alteracoes de atendimentos)");
+    aLog(save, user, "Editar", "Invoices", parts.join(" | "));
     onClose();
   };
   return /*#__PURE__*/React.createElement(Modal, {
@@ -4374,6 +4382,257 @@ function EditInvModal({
     onClick: onClose
   })));
 }
+function TrashInvModal({
+  trash,
+  atends,
+  onRestaurar,
+  onPurgar,
+  onClose
+}) {
+  const [confirmPurge, setConfirmPurge] = useState(null);
+  // Ordenar por deletedAt descendente (mais recente primeiro)
+  const sorted = [...(trash || [])].sort((a, b) => String(b.deletedAt || "").localeCompare(String(a.deletedAt || "")));
+  const diasRestantes = deletedAt => {
+    const dt = new Date(deletedAt || 0).getTime();
+    const agora = Date.now();
+    const passados = Math.floor((agora - dt) / (24 * 60 * 60 * 1000));
+    return Math.max(0, 30 - passados);
+  };
+  return /*#__PURE__*/React.createElement(Modal, {
+    title: "Lixeira de Invoices",
+    onClose: onClose,
+    w: 720
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...crd,
+      background: T.accL,
+      padding: "10px 14px",
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: T.acc
+    }
+  }, "Invoices excluidas ficam aqui por ", /*#__PURE__*/React.createElement("strong", null, "30 dias"), ". Passado esse prazo sao removidas automaticamente. Ao restaurar, os atendimentos originais voltam a ser vinculados ", /*#__PURE__*/React.createElement("strong", null, "se ainda estiverem disponiveis"), " (nao faturados em outra invoice).")), !sorted.length && /*#__PURE__*/React.createElement("p", {
+    style: {
+      textAlign: "center",
+      color: T.txM,
+      fontSize: 12,
+      padding: "24px"
+    }
+  }, "Lixeira vazia."), sorted.map(item => {
+    const inv = item.invoice || {};
+    const invAts = (atends || []).filter(a => (item.atendIds || []).includes(a.id));
+    const dias = diasRestantes(item.deletedAt);
+    const disponiveis = invAts.filter(a => !a.invoiceId).length;
+    const totalOrig = (item.atendIds || []).length;
+    return /*#__PURE__*/React.createElement("div", {
+      key: item.id,
+      style: {
+        ...crd,
+        marginBottom: 8,
+        padding: 12,
+        borderLeft: "3px solid " + (dias <= 3 ? T.err : T.acc)
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        gap: 12
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 4
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontFamily: "monospace",
+        fontSize: 13,
+        fontWeight: 900,
+        color: T.dark
+      }
+    }, inv.numero), /*#__PURE__*/React.createElement(Badge, {
+      label: inv.segNome || "?",
+      color: "blue"
+    }), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        fontWeight: 800,
+        color: T.dark
+      }
+    }, fmtBRL(inv.totalBRL || 0))), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "4px 0",
+        fontSize: 10,
+        color: T.txM
+      }
+    }, "Excluida em ", /*#__PURE__*/React.createElement("strong", null, fmtDate((item.deletedAt || "").split("T")[0])), " por ", /*#__PURE__*/React.createElement("strong", null, item.deletedByNome || "?"), "\xA0|\xA0 Emissao original: ", fmtDate(inv.dataGer), "\xA0|\xA0 ", /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: dias <= 3 ? T.err : T.txM,
+        fontWeight: dias <= 3 ? 800 : 400
+      }
+    }, "Expira em ", dias, " dia(s)")), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "6px 0 2px",
+        fontSize: 11,
+        fontWeight: 700,
+        color: T.tx
+      }
+    }, "Atendimentos (", disponiveis, "/", totalOrig, " ainda disponiveis para restaurar):"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        paddingLeft: 8
+      }
+    }, invAts.length === 0 ? /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: T.err,
+        fontStyle: "italic"
+      }
+    }, "Nenhum atendimento localizado") : invAts.map(a => {
+      const emOutraInv = !!a.invoiceId;
+      return /*#__PURE__*/React.createElement("span", {
+        key: a.id,
+        style: {
+          fontSize: 11,
+          color: emOutraInv ? T.txM : T.tx,
+          textDecoration: emOutraInv ? "line-through" : "none"
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontFamily: "monospace",
+          fontWeight: 700,
+          color: emOutraInv ? T.txM : T.acc
+        }
+      }, a.codigo || "?"), "\xA0", a.nomePaciente, " — ", fmtBRL(a.valSegBRL || 0), emOutraInv && /*#__PURE__*/React.createElement("span", {
+        style: {
+          marginLeft: 6,
+          fontSize: 9,
+          fontStyle: "italic",
+          color: T.warn
+        }
+      }, "(ja em outra invoice)"));
+    }))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 5,
+        minWidth: 110
+      }
+    }, /*#__PURE__*/React.createElement(Btn, {
+      ch: "Restaurar",
+      sm: true,
+      v: "s",
+      onClick: () => onRestaurar(item.id),
+      dis: disponiveis === 0
+    }), /*#__PURE__*/React.createElement(Btn, {
+      ch: "Apagar Def.",
+      sm: true,
+      v: "d",
+      onClick: () => setConfirmPurge(item)
+    }))));
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 7,
+      marginTop: 13
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    ch: "Fechar",
+    v: "s",
+    onClick: onClose
+  })), confirmPurge && /*#__PURE__*/React.createElement(ConfirmModal, {
+    msg: "Apagar permanentemente a invoice " + (confirmPurge.invoice?.numero || "?") + " da lixeira?\n\nEsta acao NAO pode ser desfeita. Os dados desta invoice serao perdidos para sempre.",
+    titulo: "Apagar Definitivamente",
+    onOk: () => {
+      onPurgar(confirmPurge.id);
+      setConfirmPurge(null);
+    },
+    onClose: () => setConfirmPurge(null)
+  }));
+}
+function ComentModal({
+  inv,
+  save,
+  user,
+  onClose
+}) {
+  const [texto, setTexto] = useState(inv.comentario || "");
+  const hs = () => {
+    save(d => ({
+      ...d,
+      invoices: d.invoices.map(i => i.id === inv.id ? {
+        ...i,
+        comentario: texto.trim()
+      } : i)
+    }));
+    aLog(save, user, inv.comentario ? "Atualizar Comentario" : "Adicionar Comentario", "Invoices", inv.numero);
+    onClose();
+  };
+  return /*#__PURE__*/React.createElement(Modal, {
+    title: "Comentario - " + inv.numero,
+    onClose: onClose,
+    w: 480
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...crd,
+      background: T.accL,
+      padding: "10px 14px",
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      color: T.acc,
+      fontWeight: 600
+    }
+  }, "Invoice ", /*#__PURE__*/React.createElement("strong", null, inv.numero), " para ", /*#__PURE__*/React.createElement("strong", null, inv.segNome), " - ", fmtBRL(inv.totalBRL || 0))), /*#__PURE__*/React.createElement(FTA, {
+    label: "Comentario",
+    value: texto,
+    onChange: setTexto,
+    rows: 5,
+    ph: "Ex: aguardando aprovacao da seguradora, protocolo #12345, observacao interna..."
+  }), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: T.txM,
+      margin: "4px 0 10px"
+    }
+  }, "Comentario interno visivel apenas na tela de Invoices. Nao aparece no PDF/HTML enviado a seguradora."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginTop: 4
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    ch: "Salvar",
+    onClick: hs
+  }), inv.comentario && /*#__PURE__*/React.createElement(Btn, {
+    ch: "Limpar",
+    v: "d",
+    onClick: () => {
+      setTexto("");
+    }
+  }), /*#__PURE__*/React.createElement(Btn, {
+    ch: "Cancelar",
+    v: "s",
+    onClick: onClose
+  })));
+}
 function EnvioSegModal({
   inv,
   save,
@@ -4490,6 +4749,8 @@ function InvoicesTab({
   const [segFiltro, setSegFiltro] = useState(""),
     [sels, setSels] = useState([]);
   const [envioModal, setEnvioModal] = useState(null);
+  const [comentModal, setComentModal] = useState(null);
+  const [trashModal, setTrashModal] = useState(false);
   const [confirm2, setConfirm2] = useState(null);
   const [dIni, setDIni] = useState(""),
     [dFim, setDFim] = useState(""),
@@ -4566,7 +4827,9 @@ function InvoicesTab({
         }))
       }]
     }));
-    aLog(save, user, "Criar", "Invoices", numero);
+    // Detailed log: numero | seguradora | total | atendimentos (codigos + pacientes)
+    const atsDet = ats.map(a => (a.codigo || "?") + " " + (a.nomePaciente || "?").slice(0, 30)).join(", ");
+    aLog(save, user, "Criar", "Invoices", numero + " | " + (seg?.nome || "?") + " | " + fmtBRL(selTot) + " | " + ats.length + " atend: " + atsDet);
     setSels([]);
   };
   const delInv = inv => {
@@ -4580,24 +4843,108 @@ function InvoicesTab({
       alert("Nao e possivel excluir a invoice " + inv.numero + ":\n\n- " + impedimentos.join("\n- ") + "\n\nRemova esses registros antes de excluir a invoice.");
       return;
     }
+    // Info dos atendimentos vinculados para log e para exibir na confirmacao
+    const invAts = aList.filter(a => (inv.atendIds || []).includes(a.id));
+    const atsInfo = invAts.map(a => (a.codigo || "?") + " " + (a.nomePaciente || "?")).join("\n- ");
     setConfirm2({
-      msg: "Excluir a invoice " + inv.numero + "? Os atendimentos voltarao para pendentes e o titulo a receber sera removido.\n\nATENCAO: o numero " + inv.numero + " nao sera reutilizado. A proxima invoice tera o proximo numero da sequencia.",
+      msg: "Excluir a invoice " + inv.numero + " (" + (inv.segNome || "?") + " - " + fmtBRL(inv.totalBRL || 0) + ")?\n\nContem " + invAts.length + " atendimento(s):\n- " + atsInfo + "\n\nOs atendimentos voltarao para pendentes e o titulo a receber sera removido.\n\nA invoice ira para a LIXEIRA e pode ser restaurada em ate 30 dias.\n\nO numero " + inv.numero + " nao sera reutilizado.",
       titulo: "Excluir Invoice",
       onOk: () => {
-        save(d => ({
-          ...d,
-          invoices: d.invoices.filter(i => i.id !== inv.id),
-          atendimentos: d.atendimentos.map(a => a.invoiceId === inv.id ? {
-            ...a,
-            invoiceId: null
-          } : a),
-          titulos: d.titulos.filter(t => t.invoiceId !== inv.id)
-        }));
-        aLog(save, user, "Excluir", "Invoices", inv.numero);
+        save(d => {
+          // Snapshot completo da invoice + titulo relacionado para a lixeira
+          const invSnap = d.invoices.find(i => i.id === inv.id);
+          const titSnap = (d.titulos || []).find(t => t.invoiceId === inv.id);
+          const trashItem = {
+            id: uid(),
+            deletedAt: new Date().toISOString(),
+            deletedBy: user?.id || "",
+            deletedByNome: user?.nome || "desconhecido",
+            invoice: invSnap,
+            titulo: titSnap || null,
+            atendIds: invSnap?.atendIds || []
+          };
+          return {
+            ...d,
+            invoices: d.invoices.filter(i => i.id !== inv.id),
+            atendimentos: d.atendimentos.map(a => a.invoiceId === inv.id ? {
+              ...a,
+              invoiceId: null
+            } : a),
+            titulos: d.titulos.filter(t => t.invoiceId !== inv.id),
+            invoicesTrash: [...(d.invoicesTrash || []), trashItem]
+          };
+        });
+        aLog(save, user, "Excluir", "Invoices", inv.numero + " | " + (inv.segNome || "?") + " | " + fmtBRL(inv.totalBRL || 0) + " | " + invAts.length + " atend: " + invAts.map(a => (a.codigo || "?") + " " + (a.nomePaciente || "?").slice(0, 30)).join(", ") + " | -> Lixeira");
       }
     });
     return;
   };
+  const restaurarInv = trashId => {
+    save(d => {
+      const item = (d.invoicesTrash || []).find(t => t.id === trashId);
+      if (!item || !item.invoice) return d;
+      const inv = item.invoice;
+      // Verifica se o numero ainda esta livre
+      const numeroExiste = (d.invoices || []).some(i => i.numero === inv.numero);
+      if (numeroExiste) {
+        setTimeout(() => alert("Nao foi possivel restaurar: ja existe uma invoice com o numero " + inv.numero + "."), 100);
+        return d;
+      }
+      // Verifica quais atendIds ainda estao livres (nao vinculados a outra invoice)
+      const atendIdsValidos = (item.atendIds || []).filter(aid => {
+        const at = d.atendimentos.find(a => a.id === aid);
+        return at && !at.invoiceId;
+      });
+      if (!atendIdsValidos.length) {
+        setTimeout(() => alert("Nao foi possivel restaurar: nenhum dos atendimentos originais esta disponivel (podem ter sido faturados em outra invoice)."), 100);
+        return d;
+      }
+      // Restaura invoice, revincula atendimentos
+      const invRestored = {
+        ...inv,
+        atendIds: atendIdsValidos
+      };
+      return {
+        ...d,
+        invoices: [...d.invoices, invRestored],
+        atendimentos: d.atendimentos.map(a => atendIdsValidos.includes(a.id) ? {
+          ...a,
+          invoiceId: inv.id
+        } : a),
+        titulos: item.titulo ? [...d.titulos, item.titulo] : d.titulos,
+        invoicesTrash: (d.invoicesTrash || []).filter(t => t.id !== trashId)
+      };
+    });
+    aLog(save, user, "Restaurar", "Invoices", "Restaurada da lixeira");
+  };
+  const purgarTrash = trashId => {
+    save(d => ({
+      ...d,
+      invoicesTrash: (d.invoicesTrash || []).filter(t => t.id !== trashId)
+    }));
+    aLog(save, user, "Purgar Lixeira", "Invoices", "Removida permanentemente");
+  };
+  // Auto-limpeza: itens com mais de 30 dias na lixeira sao removidos automaticamente
+  React.useEffect(() => {
+    const trash = data.invoicesTrash || [];
+    if (!trash.length) return;
+    const agora = Date.now();
+    const limite = 30 * 24 * 60 * 60 * 1000; // 30 dias
+    const expirados = trash.filter(t => {
+      const dt = new Date(t.deletedAt || 0).getTime();
+      return agora - dt > limite;
+    });
+    if (expirados.length) {
+      save(d => ({
+        ...d,
+        invoicesTrash: (d.invoicesTrash || []).filter(t => {
+          const dt = new Date(t.deletedAt || 0).getTime();
+          return agora - dt <= limite;
+        })
+      }));
+      console.log("[Lixeira] " + expirados.length + " invoice(s) expiradas removidas automaticamente");
+    }
+  }, []);
   const recalcularInvoices = () => {
     save(d => {
       const atends = d.atendimentos || [];
@@ -4959,6 +5306,11 @@ function InvoicesTab({
         gap: 7
       }
     }, /*#__PURE__*/React.createElement(Btn, {
+      ch: "Lixeira" + ((data.invoicesTrash || []).length ? " (" + (data.invoicesTrash || []).length + ")" : ""),
+      sm: true,
+      v: "s",
+      onClick: () => setTrashModal(true)
+    }), /*#__PURE__*/React.createElement(Btn, {
       ch: "Recalcular Invoices e Contas",
       sm: true,
       v: "s",
@@ -5131,7 +5483,7 @@ function InvoicesTab({
       borderCollapse: "collapse",
       minWidth: 1100
     }
-  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ["Numero", "Atendimentos", "Seguradora", "Emissao", "Vencimento", "Val.Prest", "Val.Seg", "Total Fat.", "NF Latam", "Envio Seg.", "Acoes"].map((h, i) => /*#__PURE__*/React.createElement("th", {
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ["Numero", "Atendimentos", "Seguradora", "Emissao", "Vencimento", "Val.Prest", "Val.Seg", "Total Fat.", "NF Latam", "Envio Seg.", "Comentario", "Acoes"].map((h, i) => /*#__PURE__*/React.createElement("th", {
     key: i,
     style: TH
   }, h)))), /*#__PURE__*/React.createElement("tbody", null, iList.map((inv, i) => /*#__PURE__*/React.createElement("tr", {
@@ -5276,6 +5628,39 @@ function InvoicesTab({
       padding: "1px 5px"
     }
   }))), /*#__PURE__*/React.createElement("td", {
+    style: TD
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4,
+      alignItems: "center",
+      maxWidth: 180
+    }
+  }, inv.comentario ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+    title: inv.comentario,
+    style: {
+      fontSize: 11,
+      color: T.tx,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      flex: 1
+    }
+  }, inv.comentario), /*#__PURE__*/React.createElement(Btn, {
+    ch: "Editar",
+    sm: true,
+    v: "ghost",
+    onClick: () => setComentModal(inv),
+    style: {
+      fontSize: 10,
+      padding: "1px 5px"
+    }
+  })) : /*#__PURE__*/React.createElement(Btn, {
+    ch: "+ Coment.",
+    sm: true,
+    v: "s",
+    onClick: () => setComentModal(inv)
+  }))), /*#__PURE__*/React.createElement("td", {
     style: {
       ...TD,
       textAlign: "right"
@@ -5322,7 +5707,7 @@ function InvoicesTab({
       onClick: () => delInv(inv)
     }) : null;
   })())))), !iList.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-    colSpan: 11,
+    colSpan: 12,
     style: {
       padding: "24px",
       textAlign: "center",
@@ -5346,6 +5731,17 @@ function InvoicesTab({
     save: save,
     user: user,
     onClose: () => setEnvioModal(null)
+  }), comentModal && /*#__PURE__*/React.createElement(ComentModal, {
+    inv: comentModal,
+    save: save,
+    user: user,
+    onClose: () => setComentModal(null)
+  }), trashModal && /*#__PURE__*/React.createElement(TrashInvModal, {
+    trash: data.invoicesTrash || [],
+    atends: data.atendimentos || [],
+    onRestaurar: restaurarInv,
+    onPurgar: purgarTrash,
+    onClose: () => setTrashModal(false)
   }), log && /*#__PURE__*/React.createElement(LogModal, {
     logs: (data.auditLog || []).filter(l => l.ent === "Invoices"),
     onClose: () => setLog(false),
@@ -14373,7 +14769,7 @@ const saveToDB = async state => {
 // Smart merge for concurrent edits: for each array field, merge by id preferring the most recently updated version
 const smartMerge = (server, local) => {
   // Fields that are arrays of {id,...} objects - merge item by item
-  const arrayFields = ["invoices", "atendimentos", "titulos", "titulosPagar", "pacientes", "prestadores", "seguradoras", "categorias", "procedimentos", "tabelas", "statusAtend", "transferencias", "repasses", "tiposReceber", "tiposPagar", "naturezas", "tiposPrestador", "casos", "usuarios", "paises"];
+  const arrayFields = ["invoices", "invoicesTrash", "atendimentos", "titulos", "titulosPagar", "pacientes", "prestadores", "seguradoras", "categorias", "procedimentos", "tabelas", "statusAtend", "transferencias", "repasses", "tiposReceber", "tiposPagar", "naturezas", "tiposPrestador", "casos", "usuarios", "paises"];
   // For simple scalar/object fields, prefer local (they represent user changes)
   const result = {
     ...server,
@@ -14433,6 +14829,57 @@ const smartMerge = (server, local) => {
       return true;
     });
     result.auditLog = dedup.slice(0, 4999);
+  }
+  // Counter fields: NEVER regress - take max of server and local
+  // This prevents race conditions where two browsers increment the same counter
+  const counterFields = ["invCnt", "atendCnt"];
+  counterFields.forEach(f => {
+    result[f] = Math.max(Number(server[f] || 0), Number(local[f] || 0));
+  });
+  // Detect and fix duplicate invoice numbers (from concurrent creation)
+  if (Array.isArray(result.invoices) && result.invoices.length > 0) {
+    const byNumero = {};
+    result.invoices.forEach(inv => {
+      if (!inv || !inv.numero) return;
+      (byNumero[inv.numero] = byNumero[inv.numero] || []).push(inv);
+    });
+    const duplicates = Object.entries(byNumero).filter(([n, arr]) => arr.length > 1);
+    if (duplicates.length > 0) {
+      let nextCnt = result.invCnt || 0;
+      // Also consider highest existing numero to avoid collisions during renumber
+      result.invoices.forEach(inv => {
+        const n = parseInt(String(inv.numero || "").replace("INV-", ""));
+        if (!isNaN(n) && n > nextCnt) nextCnt = n;
+      });
+      const renumberMap = {};
+      duplicates.forEach(([numero, invs]) => {
+        // Sort by dataGer earliest first, then by id for stability - keep earliest with original numero
+        invs.sort((a, b) => String(a.dataGer || "").localeCompare(String(b.dataGer || "")) || String(a.id).localeCompare(String(b.id)));
+        for (let i = 1; i < invs.length; i++) {
+          nextCnt++;
+          const newNumero = "INV-" + String(nextCnt).padStart(5, "0");
+          renumberMap[invs[i].id] = {
+            old: invs[i].numero,
+            neu: newNumero
+          };
+          invs[i].numero = newNumero;
+        }
+      });
+      // Update corresponding titulos to reflect new numero
+      if (Object.keys(renumberMap).length > 0 && Array.isArray(result.titulos)) {
+        result.titulos = result.titulos.map(t => {
+          if (t && t.invoiceId && renumberMap[t.invoiceId]) {
+            return {
+              ...t,
+              numero: renumberMap[t.invoiceId].neu
+            };
+          }
+          return t;
+        });
+      }
+      result.invCnt = nextCnt;
+      console.warn("[smartMerge] Corrigidos " + Object.keys(renumberMap).length + " numeros duplicados de invoice:", renumberMap);
+    }
   }
   return result;
 };
