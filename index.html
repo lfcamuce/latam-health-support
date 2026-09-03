@@ -11,14 +11,19 @@ html,body{height:100%}
 body{font-family:'Inter',sans-serif;background:#F7F9FB;color:#111827;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
 #root{min-height:100vh}
 input,button,select,textarea{font-family:inherit}
+.loading{display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Manrope',sans-serif;color:#00174B;font-weight:700}
 </style>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div class="loading">Carregando Latam Health Support...</div></div>
 <script>
+(function bootApp(){
+  if(typeof React==="undefined"||typeof ReactDOM==="undefined"||typeof supabase==="undefined"){
+    return setTimeout(bootApp,50);
+  }
 // Latam Health Support ERP \u2014 single file React JSX, localStorage key: lhs6
 const {
   useState,
@@ -4762,25 +4767,51 @@ function InvoicesTab({
       const invDoc = await PDFLib.PDFDocument.load(invPdfBytes);
       const invPages = await mergedPdf.copyPages(invDoc, invDoc.getPageIndices());
       invPages.forEach(p => mergedPdf.addPage(p));
+      const falhas = [];
+      let anexados = 0;
       for (const a of ats) {
         const docs = a.docs || [];
-        const gops = docs.filter(d => d.categoria === "gop");
-        const rels = docs.filter(d => d.categoria === "relatorio");
+        // Case-insensitive category matching, fallback to name/tipo detection
+        const gops = docs.filter(d => {
+          const cat = String(d.categoria || "").toLowerCase();
+          if (cat === "gop") return true;
+          // Fallback: detect by nome
+          const nome = String(d.nome || "").toLowerCase();
+          return !d.categoria && (nome.includes("gop") || nome.startsWith("gop_") || nome.startsWith("gop "));
+        });
+        const rels = docs.filter(d => {
+          const cat = String(d.categoria || "").toLowerCase();
+          if (cat === "relatorio") return true;
+          const nome = String(d.nome || "").toLowerCase();
+          return !d.categoria && nome.includes("relatorio");
+        });
+        console.log("[PackFat] Atend " + a.codigo + " - GOPs:" + gops.length + " Relatorios:" + rels.length + " TotalDocs:" + docs.length);
         for (const doc of [...gops, ...rels]) {
           try {
+            console.log("[PackFat] Anexando: " + doc.nome + " (" + (doc.data || "").slice(0, 50) + "...)");
             const url = await resolveFileURL(doc.data);
-            if (!url) continue;
-            if (url.startsWith("data:application/pdf") || url.includes("application/pdf")) {
+            if (!url) {
+              console.warn("[PackFat] URL nula para: " + doc.nome);
+              falhas.push(doc.nome + " (arquivo nao encontrado no servidor)");
+              continue;
+            }
+            // Robust type detection: check data URL prefix OR fallback to filename extension
+            const isPdf = url.startsWith("data:application/pdf") || url.includes("application/pdf") || String(doc.nome || "").toLowerCase().endsWith(".pdf");
+            const isImg = url.startsWith("data:image/") || url.match(/\.(jpg|jpeg|png)$/i);
+            if (isPdf) {
               const pdfBytes = await fetch(url).then(r => r.arrayBuffer());
               const src = await PDFLib.PDFDocument.load(pdfBytes, {
                 ignoreEncryption: true
               });
               const pages = await mergedPdf.copyPages(src, src.getPageIndices());
               pages.forEach(p => mergedPdf.addPage(p));
-            } else if (url.startsWith("data:image/") || url.match(/\.(jpg|jpeg|png)$/i)) {
+              anexados++;
+              console.log("[PackFat] OK PDF anexado: " + doc.nome + " (" + pages.length + " paginas)");
+            } else if (isImg) {
               const imgBytes = await fetch(url).then(r => r.arrayBuffer());
               let img;
-              if (url.includes("png")) {
+              const isPng = url.startsWith("data:image/png") || String(doc.nome || "").toLowerCase().endsWith(".png");
+              if (isPng) {
                 img = await mergedPdf.embedPng(imgBytes);
               } else {
                 img = await mergedPdf.embedJpg(imgBytes);
@@ -4795,11 +4826,21 @@ function InvoicesTab({
                 width: iw * scale,
                 height: ih * scale
               });
+              anexados++;
+              console.log("[PackFat] OK Imagem anexada: " + doc.nome);
+            } else {
+              console.warn("[PackFat] Tipo desconhecido para: " + doc.nome + " - url:", url.slice(0, 80));
+              falhas.push(doc.nome + " (tipo de arquivo nao reconhecido)");
             }
           } catch (err) {
-            console.warn("Falha ao anexar", doc.nome, err);
+            console.error("[PackFat] Erro ao anexar " + doc.nome, err);
+            falhas.push(doc.nome + " (" + err.message + ")");
           }
         }
+      }
+      console.log("[PackFat] Total anexados:", anexados, "/ Falhas:", falhas.length);
+      if (falhas.length > 0) {
+        setTimeout(() => alert("Pack Fat gerado, mas " + falhas.length + " arquivo(s) falharam:\n\n- " + falhas.join("\n- ") + "\n\nVerifique o console (F12) para detalhes."), 500);
       }
       const bytes = await mergedPdf.save();
       const blob = new Blob([bytes], {
@@ -15324,9 +15365,9 @@ function App() {
     }
   }, "Acesso restrito.")), active === "config" && /*#__PURE__*/React.createElement(ConfigTab, props)));
 }
-</script>
-<script>
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+
+  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+})();
 </script>
 </body>
 </html>
