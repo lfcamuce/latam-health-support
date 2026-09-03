@@ -5483,7 +5483,7 @@ function InvoicesTab({
       borderCollapse: "collapse",
       minWidth: 1100
     }
-  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ["Numero", "Atendimentos", "Seguradora", "Emissao", "Vencimento", "Val.Prest", "Val.Seg", "Total Fat.", "NF Latam", "Envio Seg.", "Comentario", "Acoes"].map((h, i) => /*#__PURE__*/React.createElement("th", {
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ["Numero / Coment.", "Atendimentos", "Seguradora", "Emissao", "Vencimento", "Val.Prest", "Val.Seg", "Total Fat.", "NF Latam", "Envio Seg.", "Acoes"].map((h, i) => /*#__PURE__*/React.createElement("th", {
     key: i,
     style: TH
   }, h)))), /*#__PURE__*/React.createElement("tbody", null, iList.map((inv, i) => /*#__PURE__*/React.createElement("tr", {
@@ -5494,14 +5494,63 @@ function InvoicesTab({
   }, /*#__PURE__*/React.createElement("td", {
     style: {
       ...TD,
+      verticalAlign: "top"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 3
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
       fontFamily: "monospace",
       fontWeight: 700,
       color: T.acc
     }
-  }, inv.numero), /*#__PURE__*/React.createElement("td", {
+  }, inv.numero), inv.comentario ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 3,
+      alignItems: "center",
+      background: "#FEF3C7",
+      padding: "3px 6px",
+      borderRadius: 5,
+      border: "1px solid #FCD34D",
+      cursor: "pointer",
+      maxWidth: 190
+    },
+    onClick: () => setComentModal(inv),
+    title: "Comentario: " + inv.comentario + "\n\nClique para editar"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11
+    }
+  }, "💬"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10,
+      color: "#78350F",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      flex: 1,
+      fontWeight: 600
+    }
+  }, inv.comentario)) : /*#__PURE__*/React.createElement(Btn, {
+    ch: "+ Comentario",
+    sm: true,
+    v: "ghost",
+    onClick: () => setComentModal(inv),
+    style: {
+      fontSize: 10,
+      padding: "2px 6px",
+      justifyContent: "flex-start"
+    }
+  }))), /*#__PURE__*/React.createElement("td", {
     style: {
       ...TD,
-      maxWidth: 200
+      maxWidth: 200,
+      verticalAlign: "top"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5628,39 +5677,6 @@ function InvoicesTab({
       padding: "1px 5px"
     }
   }))), /*#__PURE__*/React.createElement("td", {
-    style: TD
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 4,
-      alignItems: "center",
-      maxWidth: 180
-    }
-  }, inv.comentario ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
-    title: inv.comentario,
-    style: {
-      fontSize: 11,
-      color: T.tx,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      flex: 1
-    }
-  }, inv.comentario), /*#__PURE__*/React.createElement(Btn, {
-    ch: "Editar",
-    sm: true,
-    v: "ghost",
-    onClick: () => setComentModal(inv),
-    style: {
-      fontSize: 10,
-      padding: "1px 5px"
-    }
-  })) : /*#__PURE__*/React.createElement(Btn, {
-    ch: "+ Coment.",
-    sm: true,
-    v: "s",
-    onClick: () => setComentModal(inv)
-  }))), /*#__PURE__*/React.createElement("td", {
     style: {
       ...TD,
       textAlign: "right"
@@ -5707,7 +5723,7 @@ function InvoicesTab({
       onClick: () => delInv(inv)
     }) : null;
   })())))), !iList.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-    colSpan: 12,
+    colSpan: 11,
     style: {
       padding: "24px",
       textAlign: "center",
