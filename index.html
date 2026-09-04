@@ -2282,34 +2282,30 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
     const dataAtendFmt = form.dataAtend ? new Date(form.dataAtend + "T12:00:00").toLocaleDateString("pt-BR") : "-";
     const codigo = form.codigo || "";
     const dataHoje = new Date().toLocaleDateString("pt-BR");
-    // Prestador do atendimento
+    // Prestador do atendimento (usado como Local Atendimento)
     const prestador = prest.find(p => p.id === form.prestadorId) || {};
     const prestadorNome = prestador.nome || form.prestadorNome || "-";
     const prestLoc = [prestador.cidade, prestador.estado].filter(Boolean).join(" - ");
     const prestadorCompleto = prestLoc ? prestadorNome + " (" + prestLoc + ")" : prestadorNome;
-    // Procedimento do atendimento
-    const procedimento = (data.procedimentos || []).find(p => p.id === form.procId) || {};
-    const procedimentoNome = procedimento.nome || form.procNome || "-";
     const nl2br = s => String(s || "-").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
 
     // Container oculto com o HTML institucional do relatorio
     const container = document.createElement("div");
     container.style.cssText = "position:fixed;top:-10000px;left:0;width:794px;background:#fff;font-family:Inter,Arial,sans-serif;font-size:12px;color:#111;box-sizing:border-box;";
     container.innerHTML = `
-      <div style="background:linear-gradient(135deg,#00174B 0%,#0053DB 100%);padding:28px 40px;color:#fff;position:relative">
-        <div style="display:flex;align-items:center;gap:18px">
-          <div style="background:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.15)">
+      <div style="background:linear-gradient(135deg,#00174B 0%,#0053DB 100%);padding:24px 40px;color:#fff">
+        <div style="display:flex;align-items:center;gap:20px">
+          <div style="background:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.15);flex-shrink:0">
             <img src="${LATAM_LOGO}" style="height:52px;width:auto;object-fit:contain;display:block" crossorigin="anonymous"/>
           </div>
-          <div>
-            <h1 style="font-family:Manrope,Arial,sans-serif;font-size:22px;font-weight:900;margin:0;letter-spacing:.3px">${emp.nome || "Latam Health Support"}</h1>
-            <p style="margin:3px 0 0;font-size:11px;opacity:.9">${emp.email || ""} ${emp.telefone ? "&nbsp;|&nbsp; " + emp.telefone : ""}</p>
+          <div style="flex:1;min-width:0;padding-right:16px">
+            <h1 style="font-family:Manrope,Arial,sans-serif;font-size:17px;font-weight:900;margin:0;letter-spacing:.3px;line-height:1.25">${emp.nome || "Latam Health Support"}</h1>
+            <p style="margin:5px 0 0;font-size:10px;opacity:.9">${emp.email || ""}${emp.telefone ? " &nbsp;|&nbsp; " + emp.telefone : ""}</p>
           </div>
-        </div>
-        <div style="position:absolute;top:28px;right:40px;text-align:right">
-          <p style="margin:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;opacity:.85">Relatorio Atendimento</p>
-          ${codigo ? `<p style="margin:4px 0 0;font-size:14px;font-weight:800;font-family:monospace">${codigo}</p>` : ""}
-          <p style="margin:4px 0 0;font-size:10px;opacity:.85">Emitido em ${dataHoje}</p>
+          <div style="text-align:right;flex-shrink:0;min-width:160px;border-left:1px solid rgba(255,255,255,.25);padding-left:16px">
+            <p style="margin:0;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;opacity:.85">Relatorio Atendimento</p>
+            ${codigo ? `<p style="margin:5px 0 0;font-size:15px;font-weight:800;font-family:monospace;letter-spacing:.05em">${codigo}</p>` : ""}
+          </div>
         </div>
       </div>
       <div style="height:6px;background:#B31D25"></div>
@@ -2327,17 +2323,9 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
         <div style="margin-bottom:18px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <div style="width:5px;height:20px;background:#0053DB;border-radius:3px"></div>
-            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Prestador</h2>
+            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Local Atendimento</h2>
           </div>
           <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px">${nl2br(prestadorCompleto)}</div>
-        </div>
-        
-        <div style="margin-bottom:18px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <div style="width:5px;height:20px;background:#0053DB;border-radius:3px"></div>
-            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Procedimento</h2>
-          </div>
-          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px">${nl2br(procedimentoNome)}</div>
         </div>
         
         <div style="margin-bottom:18px">
@@ -2346,6 +2334,14 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
             <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Sintomas Relatados</h2>
           </div>
           <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px;text-align:justify">${nl2br(form.sintomas)}</div>
+        </div>
+        
+        <div style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="width:5px;height:20px;background:#0053DB;border-radius:3px"></div>
+            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Informacao do Atendimento</h2>
+          </div>
+          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px;text-align:justify">${nl2br(form.infAtend)}</div>
         </div>
         
         <div style="margin-bottom:24px">
@@ -2364,7 +2360,7 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
       </div>
       
       <div style="background:#F8FAFC;padding:12px 40px;border-top:1px solid #E5E7EB;margin-top:20px;font-size:9px;color:#6B7280;text-align:center">
-        Este documento e confidencial e destina-se exclusivamente ao proposito indicado. Emitido em ${dataHoje}.
+        Este documento e confidencial e destina-se exclusivamente ao proposito indicado.
       </div>
     `;
     document.body.appendChild(container);
@@ -3191,16 +3187,79 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
       l: s.nome
     })),
     err: erros.statusId
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      gridColumn: "1/-1",
+      marginTop: 6,
+      padding: 14,
+      background: "#F8FAFC",
+      borderRadius: 8,
+      border: "1px solid #E5E7EB"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10,
+      gap: 8,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 5,
+      height: 18,
+      background: T.acc,
+      borderRadius: 3
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: GF,
+      fontWeight: 800,
+      color: T.dark,
+      fontSize: 13,
+      textTransform: "uppercase",
+      letterSpacing: ".05em"
+    }
+  }, "Relatorio Atendimento")), /*#__PURE__*/React.createElement(Btn, {
+    ch: "Gerar Relatorio PDF",
+    sm: true,
+    v: "p",
+    onClick: gerarRelatorioMedico
+  })), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: T.txM,
+      margin: "0 0 8px"
+    }
+  }, "Local Atendimento (Prestador) sera puxado automaticamente do atendimento acima."), /*#__PURE__*/React.createElement(FTA, {
+    label: "Sintomas Relatados",
+    value: form.sintomas,
+    onChange: set("sintomas"),
+    rows: 3,
+    ph: "Descreva o quadro clinico apresentado pelo paciente..."
   }), /*#__PURE__*/React.createElement(FTA, {
     label: "Informacao do Atendimento",
     value: form.infAtend,
     onChange: set("infAtend"),
     rows: 4,
-    ph: "Descreva o atendimento, sintomas, procedimentos realizados...",
+    ph: "Descreva o atendimento, sintomas, procedimentos realizados..."
+  }), /*#__PURE__*/React.createElement(FTA, {
+    label: "Exames, Medicamentos e Procedimentos Prescritos",
+    value: form.examesProced,
+    onChange: set("examesProced"),
+    rows: 4,
+    ph: "Liste os exames realizados, medicamentos administrados e procedimentos executados...",
     style: {
-      gridColumn: "1/-1"
+      marginBottom: 0
     }
-  }), /*#__PURE__*/React.createElement(Fld, {
+  })), /*#__PURE__*/React.createElement(Fld, {
     label: "Documentos Anexos",
     style: {
       gridColumn: "1/-1"
@@ -3590,68 +3649,6 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
         nfAnexoValorOk: false
       }))
     })))
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 14,
-      padding: 14,
-      background: "#F8FAFC",
-      borderRadius: 8,
-      border: "1px solid #E5E7EB"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 10,
-      gap: 8,
-      flexWrap: "wrap"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      alignItems: "center",
-      gap: 8
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      width: 5,
-      height: 18,
-      background: T.acc,
-      borderRadius: 3
-    }
-  }), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontFamily: GF,
-      fontWeight: 800,
-      color: T.dark,
-      fontSize: 13,
-      textTransform: "uppercase",
-      letterSpacing: ".05em"
-    }
-  }, "Relatorio Atendimento")), /*#__PURE__*/React.createElement(Btn, {
-    ch: "Gerar Relatorio PDF",
-    sm: true,
-    v: "p",
-    onClick: gerarRelatorioMedico
-  })), /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 10,
-      color: T.txM,
-      margin: "0 0 8px"
-    }
-  }, "Prestador e Procedimento serao puxados automaticamente do atendimento acima."), /*#__PURE__*/React.createElement(FTA, {
-    label: "Sintomas Relatados",
-    value: form.sintomas,
-    onChange: set("sintomas"),
-    rows: 3,
-    ph: "Descreva o quadro clinico apresentado pelo paciente..."
-  }), /*#__PURE__*/React.createElement(FTA, {
-    label: "Exames, Medicamentos e Procedimentos Prescritos",
-    value: form.examesProced,
-    onChange: set("examesProced"),
-    rows: 4,
-    ph: "Liste os exames realizados, medicamentos administrados e procedimentos executados..."
   })), /*#__PURE__*/React.createElement(FTA, {
     label: "Observacoes",
     value: form.obs,
