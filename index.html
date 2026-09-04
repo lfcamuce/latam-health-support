@@ -2282,12 +2282,14 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
     const dataAtendFmt = form.dataAtend ? new Date(form.dataAtend + "T12:00:00").toLocaleDateString("pt-BR") : "-";
     const codigo = form.codigo || "";
     const dataHoje = new Date().toLocaleDateString("pt-BR");
-    // Local = Prestador selecionado
+    // Prestador do atendimento
     const prestador = prest.find(p => p.id === form.prestadorId) || {};
-    const localAtend = prestador.nome || form.prestadorNome || "-";
-    // Info adicional do prestador (cidade/estado se disponivel)
+    const prestadorNome = prestador.nome || form.prestadorNome || "-";
     const prestLoc = [prestador.cidade, prestador.estado].filter(Boolean).join(" - ");
-    const localCompleto = prestLoc ? localAtend + " (" + prestLoc + ")" : localAtend;
+    const prestadorCompleto = prestLoc ? prestadorNome + " (" + prestLoc + ")" : prestadorNome;
+    // Procedimento do atendimento
+    const procedimento = (data.procedimentos || []).find(p => p.id === form.procId) || {};
+    const procedimentoNome = procedimento.nome || form.procNome || "-";
     const nl2br = s => String(s || "-").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
 
     // Container oculto com o HTML institucional do relatorio
@@ -2325,9 +2327,17 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
         <div style="margin-bottom:18px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <div style="width:5px;height:20px;background:#0053DB;border-radius:3px"></div>
-            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Local do Atendimento</h2>
+            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Prestador</h2>
           </div>
-          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px">${nl2br(localCompleto)}</div>
+          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px">${nl2br(prestadorCompleto)}</div>
+        </div>
+        
+        <div style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="width:5px;height:20px;background:#0053DB;border-radius:3px"></div>
+            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Procedimento</h2>
+          </div>
+          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px">${nl2br(procedimentoNome)}</div>
         </div>
         
         <div style="margin-bottom:18px">
@@ -3630,7 +3640,7 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
       color: T.txM,
       margin: "0 0 8px"
     }
-  }, "Local do atendimento sera o prestador selecionado acima."), /*#__PURE__*/React.createElement(FTA, {
+  }, "Prestador e Procedimento serao puxados automaticamente do atendimento acima."), /*#__PURE__*/React.createElement(FTA, {
     label: "Sintomas Relatados",
     value: form.sintomas,
     onChange: set("sintomas"),
