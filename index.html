@@ -1979,7 +1979,10 @@ function AtendimentosTab({
     prescitorNome: "",
     valRepasse: "",
     obs: "",
-    repassePendente: false
+    repassePendente: false,
+    localAtend: "",
+    sintomas: "",
+    examesProced: ""
   };
   const [show, setShow] = useState(false),
     [eId, setEId] = useState(null),
@@ -2247,6 +2250,152 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+  const gerarRelatorioMedico = async () => {
+    if (!form.nomePaciente) {
+      alert("Preencha o nome do paciente antes de gerar o relatorio.");
+      return;
+    }
+    if (!form.localAtend && !form.sintomas && !form.examesProced) {
+      if (!confirm("Os campos Local, Sintomas e Exames/Procedimentos estao vazios. Gerar mesmo assim?")) return;
+    }
+    // Carrega bibliotecas via CDN
+    const loadScript = (src, check) => new Promise((res, rej) => {
+      if (check()) return res();
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = res;
+      s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    try {
+      await loadScript("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js", () => !!window.html2canvas);
+      await loadScript("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js", () => !!(window.jspdf || window.jsPDF));
+    } catch (e) {
+      alert("Falha ao carregar bibliotecas. Verifique a conexao.");
+      return;
+    }
+    const jsPDFCtor = window.jspdf && window.jspdf.jsPDF || window.jsPDF;
+    const emp = data.empresa || {};
+    const pac = data.pacientes?.find(p => p.id === form.pacienteId) || {};
+    const dataNasc = form.dataNasc || pac.dataNasc || "";
+    const dataNascFmt = dataNasc ? new Date(dataNasc + "T12:00:00").toLocaleDateString("pt-BR") : "-";
+    const dataAtendFmt = form.dataAtend ? new Date(form.dataAtend + "T12:00:00").toLocaleDateString("pt-BR") : "-";
+    const codigo = form.codigo || "";
+    const dataHoje = new Date().toLocaleDateString("pt-BR");
+    const nl2br = s => String(s || "-").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+
+    // Container oculto com o HTML institucional do relatorio
+    const container = document.createElement("div");
+    container.style.cssText = "position:fixed;top:-10000px;left:0;width:794px;background:#fff;font-family:Inter,Arial,sans-serif;font-size:12px;color:#111;box-sizing:border-box;";
+    container.innerHTML = `
+      <div style="background:linear-gradient(135deg,#00174B 0%,#0053DB 100%);padding:28px 40px;color:#fff;position:relative">
+        <div style="display:flex;align-items:center;gap:18px">
+          <div style="background:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.15)">
+            <img src="${LATAM_LOGO}" style="height:52px;width:auto;object-fit:contain;display:block" crossorigin="anonymous"/>
+          </div>
+          <div>
+            <h1 style="font-family:Manrope,Arial,sans-serif;font-size:22px;font-weight:900;margin:0;letter-spacing:.3px">${emp.nome || "Latam Health Support"}</h1>
+            <p style="margin:3px 0 0;font-size:11px;opacity:.9">${emp.email || ""} ${emp.telefone ? "&nbsp;|&nbsp; " + emp.telefone : ""}</p>
+          </div>
+        </div>
+        <div style="position:absolute;top:28px;right:40px;text-align:right">
+          <p style="margin:0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;opacity:.85">Relatorio Medico</p>
+          ${codigo ? `<p style="margin:4px 0 0;font-size:14px;font-weight:800;font-family:monospace">${codigo}</p>` : ""}
+          <p style="margin:4px 0 0;font-size:10px;opacity:.85">Emitido em ${dataHoje}</p>
+        </div>
+      </div>
+      <div style="height:6px;background:#B31D25"></div>
+      
+      <div style="padding:28px 40px 20px">
+        <div style="background:#F8FAFC;border-left:4px solid #00174B;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:20px">
+          <p style="margin:0 0 4px;font-size:10px;font-weight:800;color:#6B7280;text-transform:uppercase;letter-spacing:.1em">Paciente</p>
+          <p style="margin:0;font-size:18px;font-weight:800;color:#00174B;font-family:Manrope,Arial,sans-serif">${nl2br(form.nomePaciente)}</p>
+          <div style="display:flex;gap:32px;margin-top:10px;flex-wrap:wrap">
+            <div><span style="font-size:10px;font-weight:700;color:#6B7280;text-transform:uppercase">Data de Nascimento:</span> <span style="font-weight:600">${dataNascFmt}</span></div>
+            <div><span style="font-size:10px;font-weight:700;color:#6B7280;text-transform:uppercase">Data do Atendimento:</span> <span style="font-weight:600">${dataAtendFmt}</span></div>
+          </div>
+        </div>
+        
+        <div style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="width:5px;height:20px;background:#0053DB;border-radius:3px"></div>
+            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Local do Atendimento</h2>
+          </div>
+          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px">${nl2br(form.localAtend)}</div>
+        </div>
+        
+        <div style="margin-bottom:18px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="width:5px;height:20px;background:#0053DB;border-radius:3px"></div>
+            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Sintomas Relatados</h2>
+          </div>
+          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px;text-align:justify">${nl2br(form.sintomas)}</div>
+        </div>
+        
+        <div style="margin-bottom:24px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="width:5px;height:20px;background:#0053DB;border-radius:3px"></div>
+            <h2 style="font-family:Manrope,Arial,sans-serif;font-size:14px;font-weight:800;color:#00174B;margin:0;text-transform:uppercase;letter-spacing:.05em">Exames, Medicamentos e Procedimentos Prescritos</h2>
+          </div>
+          <div style="border:1px solid #E5E7EB;border-radius:8px;padding:14px 18px;background:#fff;font-size:13px;line-height:1.7;color:#1F2937;min-height:36px;text-align:justify">${nl2br(form.examesProced)}</div>
+        </div>
+        
+        <div style="margin-top:36px;padding-top:20px;border-top:2px solid #00174B">
+          <p style="margin:0 0 4px;font-size:13px;color:#1F2937">Atenciosamente,</p>
+          <p style="margin:0;font-size:15px;font-weight:800;color:#00174B;font-family:Manrope,Arial,sans-serif">Equipe Assistencial</p>
+          <p style="margin:2px 0 0;font-size:13px;color:#0053DB;font-weight:600">${emp.nome || "Latam Health Support"}</p>
+        </div>
+      </div>
+      
+      <div style="background:#F8FAFC;padding:12px 40px;border-top:1px solid #E5E7EB;margin-top:20px;font-size:9px;color:#6B7280;text-align:center">
+        Este documento e confidencial e destina-se exclusivamente ao proposito indicado. Emitido em ${dataHoje}.
+      </div>
+    `;
+    document.body.appendChild(container);
+    // Aguarda imagens carregarem
+    await new Promise(r => setTimeout(r, 300));
+    const imgs = container.querySelectorAll("img");
+    await Promise.all(Array.from(imgs).map(img => img.complete ? Promise.resolve() : new Promise(res => {
+      img.onload = res;
+      img.onerror = res;
+    })));
+    try {
+      const canvas = await window.html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false
+      });
+      document.body.removeChild(container);
+      const pdf = new jsPDFCtor({
+        orientation: "p",
+        unit: "mm",
+        format: "a4"
+      });
+      const pageW = 210,
+        pageH = 297;
+      const imgW = pageW,
+        imgH = canvas.height * imgW / canvas.width;
+      let heightLeft = imgH,
+        pos = 0;
+      const imgData = canvas.toDataURL("image/jpeg", 0.92);
+      pdf.addImage(imgData, "JPEG", 0, pos, imgW, imgH);
+      heightLeft -= pageH;
+      while (heightLeft > 0) {
+        pos = heightLeft - imgH;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, pos, imgW, imgH);
+        heightLeft -= pageH;
+      }
+      const safeName = String(form.nomePaciente || "paciente").replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40);
+      const filename = "Relatorio_" + (codigo || "ATD") + "_" + safeName + ".pdf";
+      pdf.save(filename);
+    } catch (err) {
+      if (container.parentNode) document.body.removeChild(container);
+      console.error("Erro ao gerar relatorio medico:", err);
+      alert("Erro ao gerar relatorio: " + err.message);
+    }
   };
   const hs = () => {
     const e = {};
@@ -3421,6 +3570,67 @@ hr{border:none;border-top:1px dashed #CBD5E1;margin:0 0 24px;}
         nfAnexoValorOk: false
       }))
     })))
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14,
+      padding: 14,
+      background: "#F8FAFC",
+      borderRadius: 8,
+      border: "1px solid #E5E7EB"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 10,
+      gap: 8,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 5,
+      height: 18,
+      background: T.acc,
+      borderRadius: 3
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: GF,
+      fontWeight: 800,
+      color: T.dark,
+      fontSize: 13,
+      textTransform: "uppercase",
+      letterSpacing: ".05em"
+    }
+  }, "Relatorio Medico")), /*#__PURE__*/React.createElement(Btn, {
+    ch: "Gerar Relatorio PDF",
+    sm: true,
+    v: "p",
+    onClick: gerarRelatorioMedico
+  })), /*#__PURE__*/React.createElement(FIn, {
+    label: "Local do Atendimento",
+    value: form.localAtend,
+    onChange: set("localAtend"),
+    ph: "Ex: Hospital Sirio-Libanes, Sao Paulo - SP"
+  }), /*#__PURE__*/React.createElement(FTA, {
+    label: "Sintomas Relatados",
+    value: form.sintomas,
+    onChange: set("sintomas"),
+    rows: 3,
+    ph: "Descreva o quadro clinico apresentado pelo paciente..."
+  }), /*#__PURE__*/React.createElement(FTA, {
+    label: "Exames, Medicamentos e Procedimentos Prescritos",
+    value: form.examesProced,
+    onChange: set("examesProced"),
+    rows: 4,
+    ph: "Liste os exames realizados, medicamentos administrados e procedimentos executados..."
   })), /*#__PURE__*/React.createElement(FTA, {
     label: "Observacoes",
     value: form.obs,
