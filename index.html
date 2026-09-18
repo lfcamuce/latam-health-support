@@ -147,6 +147,9 @@ const NAV = [{
   id: "atendimentos",
   label: "Atendimentos"
 }, {
+  id: "pendencias",
+  label: "Pendencias"
+}, {
   id: "casos",
   label: "Casos Pendentes"
 }, {
@@ -310,6 +313,110 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const escapeHtml = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 // escapeHtmlBr: como escapeHtml mas preserva quebras de linha convertendo para <br>
 const escapeHtmlBr = s => escapeHtml(s).replace(/\n/g, "<br>");
+
+// ================================================================
+// PENDENCIAS - Configuracao e detector
+// ================================================================
+// Cada item pode ser: "bloqueante" (vermelho), "importante" (amarelo),
+// "recomendavel" (verde) ou "desativado" (nao aparece)
+const PENDENCIAS_DEF = {
+  nfPrestador: {
+    label: "Falta NF do prestador",
+    padrao: "bloqueante",
+    descr: "Nota fiscal do hospital/prestador nao foi anexada"
+  },
+  valSeguradora: {
+    label: "Val. Seguradora zerado",
+    padrao: "bloqueante",
+    descr: "Valor a receber da seguradora nao preenchido"
+  },
+  valPrestador: {
+    label: "Val. Prestador zerado",
+    padrao: "bloqueante",
+    descr: "Valor a pagar ao prestador nao preenchido"
+  },
+  statusEmAndamento: {
+    label: "Status ainda 'Em Andamento'",
+    padrao: "bloqueante",
+    descr: "Atendimento ainda nao foi encerrado"
+  },
+  prestadorFaltando: {
+    label: "Prestador nao informado",
+    padrao: "bloqueante",
+    descr: "Nenhum prestador vinculado ao atendimento"
+  },
+  relatorioMedico: {
+    label: "Falta Relatorio Medico",
+    padrao: "importante",
+    descr: "Nenhum documento categoria 'relatorio' anexado"
+  },
+  gop: {
+    label: "Falta GOP",
+    padrao: "importante",
+    descr: "Nenhum documento categoria 'GOP' anexado"
+  },
+  termoAutorizacao: {
+    label: "Falta Termo de Autorizacao (LGPD)",
+    padrao: "importante",
+    descr: "Termo assinado pelo paciente nao anexado"
+  },
+  codAutorizacao: {
+    label: "Falta Codigo de Autorizacao",
+    padrao: "importante",
+    descr: "Codigo fornecido pela seguradora nao preenchido"
+  },
+  dataNascPaciente: {
+    label: "Data de nascimento vazia",
+    padrao: "recomendavel",
+    descr: "Nem no atendimento nem no cadastro do paciente"
+  },
+  docPaciente: {
+    label: "Documento do paciente vazio",
+    padrao: "recomendavel",
+    descr: "Nem CPF nem Passaporte cadastrado"
+  },
+  sintomasExames: {
+    label: "Sintomas e Exames nao preenchidos",
+    padrao: "recomendavel",
+    descr: "Prejudica geracao de relatorio institucional"
+  },
+  anexoGeral: {
+    label: "Nenhum anexo geral",
+    padrao: "recomendavel",
+    descr: "Recomendavel ter pelo menos 1 anexo de referencia"
+  }
+};
+const checkPendencias = (atd, data) => {
+  const cfg = data.regras && data.regras.pendencias || {};
+  const getNivel = k => cfg[k] || PENDENCIAS_DEF[k].padrao;
+  const pendencias = [];
+  const docs = atd.docs || [];
+  const paciente = (data.pacientes || []).find(p => p.id === atd.pacienteId) || {};
+  const emAndamentoId = ((data.statusAtend || []).find(s => String(s.nome || "").toLowerCase().includes("andamento")) || {}).id;
+  const add = key => {
+    const nivel = getNivel(key);
+    if (nivel === "desativado") return;
+    pendencias.push({
+      key,
+      label: PENDENCIAS_DEF[key].label,
+      nivel
+    });
+  };
+  if (!atd.nfAnexo) add("nfPrestador");
+  if (!Number(atd.valSegBRL || 0)) add("valSeguradora");
+  if (!Number(atd.valMedico || 0)) add("valPrestador");
+  if (emAndamentoId && atd.statusId === emAndamentoId) add("statusEmAndamento");
+  if (!atd.prestadorId && !atd.prestadorNome) add("prestadorFaltando");
+  if (!docs.some(d => d.categoria === "relatorio")) add("relatorioMedico");
+  if (!docs.some(d => d.categoria === "gop")) add("gop");
+  if (!docs.some(d => d.categoria === "termo")) add("termoAutorizacao");
+  if (!atd.codAutorizacao) add("codAutorizacao");
+  if (!atd.dataNasc && !paciente.dataNasc) add("dataNascPaciente");
+  if (!paciente.cpf && !paciente.passaporte && !paciente.docNum) add("docPaciente");
+  if (!atd.sintomas && !atd.examesProced) add("sintomasExames");
+  if (!docs.some(d => !d.categoria || d.categoria === "anexo")) add("anexoGeral");
+  return pendencias;
+};
 const buscarCEP = (cep, onSuccess, onError) => {
   const nums = cep.replace(/[^0-9]/g, "");
   if (nums.length !== 8) {
@@ -2004,7 +2111,9 @@ function AtendimentosTab({
   data,
   save,
   user,
-  hasPerm
+  hasPerm,
+  focusAtdId,
+  setFocusAtdId
 }) {
   const EF = {
     pacienteId: "",
@@ -2201,6 +2310,17 @@ function AtendimentosTab({
     setErros({});
     setShow(true);
   };
+  // Auto-open quando vindo da tela de Pendencias (focusAtdId setado)
+  useEffect(() => {
+    if (focusAtdId) {
+      const a = (data.atendimentos || []).find(x => x.id === focusAtdId);
+      if (a) {
+        openEdit(a);
+      }
+      if (setFocusAtdId) setFocusAtdId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusAtdId]);
   const gerarVoucher = () => {
     const pac = data.pacientes?.find(p => p.id === form.pacienteId) || {};
     const seg = segs.find(s => s.id === form.seguradoraId) || {};
@@ -5336,6 +5456,400 @@ function EnvioSegModal({
     ch: "Cancelar",
     v: "s",
     onClick: onClose
+  })));
+}
+function ScrPendencias({
+  data,
+  save,
+  user,
+  hasPerm,
+  setActive,
+  setFocusAtdId
+}) {
+  const [fSeg, setFSeg] = useState("");
+  const [fPrest, setFPrest] = useState("");
+  const [fNivel, setFNivel] = useState("todos"); // todos | bloqueante | importante | recomendavel
+  const [ocultarFaturados, setOcultarFaturados] = useState(false);
+  const [dIni, setDIni] = useState("");
+  const [dFim, setDFim] = useState("");
+  const [search, setSearch] = useState("");
+  const atends = data.atendimentos || [];
+  const segs = data.seguradoras || [];
+  const prests = data.prestadores || [];
+  const canceladoId = ((data.statusAtend || []).find(s => String(s.nome || "").toLowerCase() === "cancelado") || {}).id;
+  // Analisa todos os atendimentos e calcula pendencias
+  const analisados = atends.filter(a => a.statusId !== canceladoId).map(a => ({
+    atd: a,
+    pendencias: checkPendencias(a, data)
+  })).filter(x => x.pendencias.length > 0);
+  // Aplica filtros
+  const filtrados = analisados.filter(({
+    atd,
+    pendencias
+  }) => {
+    if (fSeg && atd.seguradoraId !== fSeg) return false;
+    if (fPrest && atd.prestadorId !== fPrest) return false;
+    if (ocultarFaturados && atd.invoiceId) return false;
+    if (dIni && (atd.dataAtend || "") < dIni) return false;
+    if (dFim && (atd.dataAtend || "") > dFim) return false;
+    if (search) {
+      const sl = search.toLowerCase();
+      if (!(atd.nomePaciente || "").toLowerCase().includes(sl) && !(atd.codigo || "").toLowerCase().includes(sl)) return false;
+    }
+    if (fNivel !== "todos") {
+      if (!pendencias.some(p => p.nivel === fNivel)) return false;
+    }
+    return true;
+  });
+  // Ordenacao: bloqueantes primeiro, depois importantes, depois recomendaveis
+  filtrados.sort((a, b) => {
+    const peso = {
+      bloqueante: 3,
+      importante: 2,
+      recomendavel: 1
+    };
+    const maxA = Math.max(...a.pendencias.map(p => peso[p.nivel] || 0));
+    const maxB = Math.max(...b.pendencias.map(p => peso[p.nivel] || 0));
+    if (maxA !== maxB) return maxB - maxA;
+    return (b.atd.dataAtend || "").localeCompare(a.atd.dataAtend || "");
+  });
+  // Contadores globais
+  const totBloq = analisados.filter(x => x.pendencias.some(p => p.nivel === "bloqueante")).length;
+  const totImp = analisados.filter(x => x.pendencias.some(p => p.nivel === "importante")).length;
+  const totRec = analisados.filter(x => x.pendencias.some(p => p.nivel === "recomendavel")).length;
+  const abrirAtd = id => {
+    setFocusAtdId(id);
+    setActive("atendimentos");
+  };
+  const corNivel = n => n === "bloqueante" ? "#DC2626" : n === "importante" ? "#D97706" : "#059669";
+  const bgNivel = n => n === "bloqueante" ? "#FEE2E2" : n === "importante" ? "#FEF3C7" : "#D1FAE5";
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SH, {
+    title: "Pendencias"
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...crd,
+      padding: "12px 16px",
+      marginBottom: 14,
+      display: "flex",
+      gap: 16,
+      flexWrap: "wrap",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 180
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 22,
+      fontWeight: 900,
+      color: T.dark,
+      fontFamily: GF
+    }
+  }, analisados.length), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "2px 0 0",
+      fontSize: 10,
+      color: T.txM,
+      textTransform: "uppercase",
+      letterSpacing: .5
+    }
+  }, "Atendimentos com pendencias")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "6px 12px",
+      background: "#FEE2E2",
+      borderRadius: 8,
+      minWidth: 80,
+      cursor: "pointer",
+      border: fNivel === "bloqueante" ? "2px solid #DC2626" : "2px solid transparent"
+    },
+    onClick: () => setFNivel(fNivel === "bloqueante" ? "todos" : "bloqueante"),
+    title: "Clique para filtrar"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 900,
+      color: "#991B1B",
+      fontFamily: GF
+    }
+  }, totBloq), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 9,
+      color: "#991B1B",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: .3
+    }
+  }, "Bloqueantes")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "6px 12px",
+      background: "#FEF3C7",
+      borderRadius: 8,
+      minWidth: 80,
+      cursor: "pointer",
+      border: fNivel === "importante" ? "2px solid #D97706" : "2px solid transparent"
+    },
+    onClick: () => setFNivel(fNivel === "importante" ? "todos" : "importante"),
+    title: "Clique para filtrar"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 900,
+      color: "#78350F",
+      fontFamily: GF
+    }
+  }, totImp), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 9,
+      color: "#78350F",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: .3
+    }
+  }, "Importantes")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "6px 12px",
+      background: "#D1FAE5",
+      borderRadius: 8,
+      minWidth: 80,
+      cursor: "pointer",
+      border: fNivel === "recomendavel" ? "2px solid #059669" : "2px solid transparent"
+    },
+    onClick: () => setFNivel(fNivel === "recomendavel" ? "todos" : "recomendavel"),
+    title: "Clique para filtrar"
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 900,
+      color: "#065F46",
+      fontFamily: GF
+    }
+  }, totRec), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 9,
+      color: "#065F46",
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: .3
+    }
+  }, "Recomendaveis")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...crd,
+      padding: 12,
+      marginBottom: 14,
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      minWidth: 180
+    }
+  }, /*#__PURE__*/React.createElement(FSel, {
+    label: "Seguradora",
+    value: fSeg,
+    onChange: setFSeg,
+    opts: [{
+      v: "",
+      l: "Todas"
+    }, ...segs.map(s => ({
+      v: s.id,
+      l: s.nome
+    }))]
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      minWidth: 180
+    }
+  }, /*#__PURE__*/React.createElement(FSel, {
+    label: "Prestador",
+    value: fPrest,
+    onChange: setFPrest,
+    opts: [{
+      v: "",
+      l: "Todos"
+    }, ...prests.map(p => ({
+      v: p.id,
+      l: p.nome
+    }))]
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 140
+    }
+  }, /*#__PURE__*/React.createElement(FIn, {
+    label: "Data Inicio",
+    value: dIni,
+    onChange: setDIni,
+    type: "date"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 140
+    }
+  }, /*#__PURE__*/React.createElement(FIn, {
+    label: "Data Fim",
+    value: dFim,
+    onChange: setDFim,
+    type: "date"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 180
+    }
+  }, /*#__PURE__*/React.createElement(FIn, {
+    label: "Buscar (nome/codigo)",
+    value: search,
+    onChange: setSearch
+  })), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      cursor: "pointer",
+      padding: "6px 12px",
+      background: ocultarFaturados ? "#DBEAFE" : T.bg,
+      borderRadius: 6,
+      border: "1px solid " + T.bdL,
+      fontSize: 11,
+      fontWeight: 700,
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: ocultarFaturados,
+    onChange: e => setOcultarFaturados(e.target.checked),
+    style: {
+      margin: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", null, "Ocultar Faturados")), fNivel !== "todos" && /*#__PURE__*/React.createElement(Btn, {
+    sm: true,
+    ch: "Limpar filtro: " + fNivel,
+    v: "s",
+    onClick: () => setFNivel("todos")
+  })), filtrados.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...crd,
+      padding: 40,
+      textAlign: "center",
+      color: T.txM
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 14,
+      fontWeight: 700
+    }
+  }, "Nenhum atendimento com pendencia encontrado."), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "6px 0 0",
+      fontSize: 11
+    }
+  }, "Ajuste os filtros ou verifique se ha atendimentos cadastrados.")) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: T.txM,
+      margin: "0 0 8px",
+      fontWeight: 700,
+      letterSpacing: .5,
+      textTransform: "uppercase"
+    }
+  }, "Mostrando ", filtrados.length, " de ", analisados.length), filtrados.map(({
+    atd,
+    pendencias
+  }) => {
+    const seg = segs.find(s => s.id === atd.seguradoraId);
+    const nivelMax = pendencias.some(p => p.nivel === "bloqueante") ? "bloqueante" : pendencias.some(p => p.nivel === "importante") ? "importante" : "recomendavel";
+    return /*#__PURE__*/React.createElement("div", {
+      key: atd.id,
+      style: {
+        ...crd,
+        marginBottom: 8,
+        padding: "10px 14px",
+        borderLeft: "4px solid " + corNivel(nivelMax)
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 12,
+        alignItems: "flex-start"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8,
+        alignItems: "center",
+        flexWrap: "wrap",
+        marginBottom: 6
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontFamily: "monospace",
+        fontWeight: 800,
+        color: T.acc,
+        fontSize: 12
+      }
+    }, atd.codigo || "S/COD"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 12,
+        fontWeight: 700,
+        color: T.dark
+      }
+    }, atd.nomePaciente || "(sem paciente)"), seg && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        color: T.txM
+      }
+    }, "· ", seg.nome), atd.dataAtend && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        color: T.txM
+      }
+    }, "· ", fmtDate(atd.dataAtend)), atd.invoiceId && /*#__PURE__*/React.createElement(Badge, {
+      label: "Faturado",
+      color: "blue"
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 3
+      }
+    }, pendencias.filter(p => fNivel === "todos" || p.nivel === fNivel).map(p => /*#__PURE__*/React.createElement("div", {
+      key: p.key,
+      style: {
+        fontSize: 11,
+        padding: "3px 8px",
+        background: bgNivel(p.nivel),
+        borderRadius: 4,
+        display: "inline-block",
+        color: corNivel(p.nivel),
+        fontWeight: 600,
+        alignSelf: "flex-start"
+      }
+    }, p.label)))), /*#__PURE__*/React.createElement(Btn, {
+      ch: "Abrir",
+      sm: true,
+      v: "p",
+      onClick: () => abrirAtd(atd.id)
+    })));
   })));
 }
 function InvoicesTab({
@@ -12972,6 +13486,126 @@ function RegrasPane({
   }).join(", ") : "Nenhum (todos os status aparecem)")), /*#__PURE__*/React.createElement("div", {
     style: {
       ...crd,
+      padding: 14,
+      marginBottom: 10,
+      borderLeft: "3px solid " + T.acc
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: 0,
+      fontWeight: 800,
+      fontSize: 13,
+      color: T.dark,
+      fontFamily: GF
+    }
+  }, "Tela de Pendencias - Niveis de Alerta"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      margin: "3px 0 0",
+      fontSize: 11,
+      color: T.txM,
+      lineHeight: 1.5
+    }
+  }, "Configure quais pendencias sao bloqueantes (vermelho), importantes (amarelo), recomendaveis (verde) ou desativadas (nao aparecem).")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: T.bg,
+      borderRadius: 8,
+      padding: 8
+    }
+  }, Object.keys(PENDENCIAS_DEF).map(key => {
+    const def = PENDENCIAS_DEF[key];
+    const atual = (data.regras?.pendencias || {})[key] || def.padrao;
+    const setNivel = novoNivel => {
+      save(d => ({
+        ...d,
+        regras: {
+          ...(d.regras || {}),
+          pendencias: {
+            ...(d.regras?.pendencias || {}),
+            [key]: novoNivel
+          }
+        }
+      }));
+      aLog(save, user, "Atualizar", "Regras", "pendencias." + key + " = " + novoNivel);
+    };
+    const opts = [{
+      v: "bloqueante",
+      l: "Bloqueante",
+      cor: "#DC2626",
+      bg: "#FEE2E2"
+    }, {
+      v: "importante",
+      l: "Importante",
+      cor: "#D97706",
+      bg: "#FEF3C7"
+    }, {
+      v: "recomendavel",
+      l: "Recomendavel",
+      cor: "#059669",
+      bg: "#D1FAE5"
+    }, {
+      v: "desativado",
+      l: "Desativado",
+      cor: "#6B7280",
+      bg: "#F3F4F6"
+    }];
+    return /*#__PURE__*/React.createElement("div", {
+      key: key,
+      style: {
+        padding: "8px 10px",
+        background: "#fff",
+        borderRadius: 6,
+        marginBottom: 5,
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        flexWrap: "wrap"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 220
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 12,
+        fontWeight: 700,
+        color: T.dark
+      }
+    }, def.label), /*#__PURE__*/React.createElement("p", {
+      style: {
+        margin: "2px 0 0",
+        fontSize: 10,
+        color: T.txM
+      }
+    }, def.descr)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 3,
+        flexWrap: "wrap"
+      }
+    }, opts.map(o => /*#__PURE__*/React.createElement("button", {
+      key: o.v,
+      onClick: () => setNivel(o.v),
+      style: {
+        padding: "4px 10px",
+        fontSize: 10,
+        fontWeight: 700,
+        borderRadius: 5,
+        border: "1px solid " + (atual === o.v ? o.cor : T.bdL),
+        background: atual === o.v ? o.bg : "#fff",
+        color: atual === o.v ? o.cor : T.txM,
+        cursor: "pointer",
+        fontFamily: GF
+      }
+    }, o.l))));
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...crd,
       padding: 12,
       marginTop: 16,
       background: T.bg
@@ -16955,6 +17589,7 @@ function App() {
   });
   const hasPerm = p => data.currentUser?.perfil === "admin" || Array.isArray(data.currentUser?.permissoes) && data.currentUser.permissoes.includes(p);
   const [active, setActive] = useState("dashboard");
+  const [focusAtdId, setFocusAtdId] = useState(null);
   const [termoAceito, setTermoAceito] = useState(false);
   const termo = data.termo || {};
   const precisaAceitar = () => {
@@ -17053,7 +17688,9 @@ function App() {
     save,
     user: data.currentUser,
     hasPerm,
-    setActive
+    setActive,
+    focusAtdId,
+    setFocusAtdId
   };
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -17124,7 +17761,7 @@ function App() {
       padding: 24,
       minHeight: "100vh"
     }
-  }, active === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, props), active === "atendimentos" && /*#__PURE__*/React.createElement(AtendimentosTab, props), active === "casos" && /*#__PURE__*/React.createElement(CasosTab, props), active === "lista" && /*#__PURE__*/React.createElement(ListaTab, props), active === "invoices" && /*#__PURE__*/React.createElement(InvoicesTab, props), active === "receber" && /*#__PURE__*/React.createElement(ReceberTab, props), active === "pagar" && /*#__PURE__*/React.createElement(PagarTab, props), active === "extrato" && /*#__PURE__*/React.createElement(ExtratoTab, props), active === "repasses" && /*#__PURE__*/React.createElement(RepassesTab, props), active === "transferencias" && /*#__PURE__*/React.createElement(TransferenciasTab, props), active === "pacientes" && (hasPerm("pacientes") ? /*#__PURE__*/React.createElement(PacientesTab, props) : /*#__PURE__*/React.createElement("p", {
+  }, active === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, props), active === "atendimentos" && /*#__PURE__*/React.createElement(AtendimentosTab, props), active === "casos" && /*#__PURE__*/React.createElement(CasosTab, props), active === "lista" && /*#__PURE__*/React.createElement(ListaTab, props), active === "invoices" && /*#__PURE__*/React.createElement(InvoicesTab, props), active === "pendencias" && /*#__PURE__*/React.createElement(ScrPendencias, props), active === "receber" && /*#__PURE__*/React.createElement(ReceberTab, props), active === "pagar" && /*#__PURE__*/React.createElement(PagarTab, props), active === "extrato" && /*#__PURE__*/React.createElement(ExtratoTab, props), active === "repasses" && /*#__PURE__*/React.createElement(RepassesTab, props), active === "transferencias" && /*#__PURE__*/React.createElement(TransferenciasTab, props), active === "pacientes" && (hasPerm("pacientes") ? /*#__PURE__*/React.createElement(PacientesTab, props) : /*#__PURE__*/React.createElement("p", {
     style: {
       color: T.txM,
       padding: 20
