@@ -345,6 +345,16 @@ const PENDENCIAS_DEF = {
     padrao: "bloqueante",
     descr: "Nenhum prestador vinculado ao atendimento"
   },
+  procedimentoSelecionado: {
+    label: "Procedimento nao selecionado",
+    padrao: "bloqueante",
+    descr: "Nenhum procedimento vinculado ao atendimento"
+  },
+  dataHoraAtendimento: {
+    label: "Data ou horario do atendimento vazios",
+    padrao: "importante",
+    descr: "Falta data, hora de solicitacao ou hora de atendimento"
+  },
   relatorioMedico: {
     label: "Falta Relatorio Medico",
     padrao: "importante",
@@ -365,6 +375,16 @@ const PENDENCIAS_DEF = {
     padrao: "importante",
     descr: "Codigo fornecido pela seguradora nao preenchido"
   },
+  pagamentoPrestador: {
+    label: "Pagamento ao prestador pendente",
+    padrao: "importante",
+    descr: "Titulo a pagar em aberto ou parcial (ou nao gerado)"
+  },
+  recebimentoSeguradora: {
+    label: "Recebimento da seguradora pendente",
+    padrao: "importante",
+    descr: "Atendimento faturado mas com saldo aberto no titulo a receber"
+  },
   dataNascPaciente: {
     label: "Data de nascimento vazia",
     padrao: "recomendavel",
@@ -374,6 +394,16 @@ const PENDENCIAS_DEF = {
     label: "Documento do paciente vazio",
     padrao: "recomendavel",
     descr: "Nem CPF nem Passaporte cadastrado"
+  },
+  telefonePaciente: {
+    label: "Telefone do paciente vazio",
+    padrao: "recomendavel",
+    descr: "Sem telefone de contato (atendimento nem cadastro)"
+  },
+  enderecoPaciente: {
+    label: "Endereco do paciente incompleto",
+    padrao: "recomendavel",
+    descr: "Falta rua, cidade ou estado (atendimento nem cadastro)"
   },
   sintomasExames: {
     label: "Sintomas e Exames nao preenchidos",
@@ -407,12 +437,39 @@ const checkPendencias = (atd, data) => {
   if (!Number(atd.valMedico || 0)) add("valPrestador");
   if (emAndamentoId && atd.statusId === emAndamentoId) add("statusEmAndamento");
   if (!atd.prestadorId && !atd.prestadorNome) add("prestadorFaltando");
+  if (!atd.procId) add("procedimentoSelecionado");
+  if (!atd.dataAtend || !atd.horaSolic && !atd.horaAtend) add("dataHoraAtendimento");
   if (!docs.some(d => d.categoria === "relatorio")) add("relatorioMedico");
   if (!docs.some(d => d.categoria === "gop")) add("gop");
   if (!docs.some(d => d.categoria === "termo")) add("termoAutorizacao");
   if (!atd.codAutorizacao) add("codAutorizacao");
+  // Pagamento ao prestador: se tem val medico > 0 e titulo pagar nao existe ou nao esta quitado
+  if (Number(atd.valMedico || 0) > 0) {
+    const tp = (data.titulosPagar || []).find(x => x.atendId === atd.id);
+    if (!tp || tp.status !== "quitado") add("pagamentoPrestador");
+  }
+  // Recebimento da seguradora: so faz sentido se atendimento foi faturado
+  if (atd.invoiceId) {
+    const tit = (data.titulos || []).find(t => t.invoiceId === atd.invoiceId);
+    if (tit) {
+      const atendNoTit = (tit.atends || []).find(a => a.atendId === atd.id);
+      if (atendNoTit) {
+        const totalRec = (atendNoTit.recebimentos || []).reduce((s, r) => s + Number(r.valorRecebido || 0), 0);
+        const saldo = Number(atendNoTit.valorOriginal || 0) - totalRec;
+        if (saldo > 0.01) add("recebimentoSeguradora"); // margem de 1 centavo para floats
+      } else if (Number(atd.valSegBRL || 0) > 0) {
+        add("recebimentoSeguradora"); // esta na invoice mas nao no titulo
+      }
+    } else if (Number(atd.valSegBRL || 0) > 0) {
+      add("recebimentoSeguradora"); // invoice sem titulo gerado
+    }
+  }
   if (!atd.dataNasc && !paciente.dataNasc) add("dataNascPaciente");
   if (!paciente.cpf && !paciente.passaporte && !paciente.docNum) add("docPaciente");
+  if (!atd.telPaciente && !paciente.telefone) add("telefonePaciente");
+  // Endereco: precisa ter rua + cidade + estado (no atd ou no paciente)
+  const enderecoOK = atd.pacRua && atd.pacCidade && atd.pacEstado || paciente.endereco || paciente.rua && paciente.cidade && paciente.estado;
+  if (!enderecoOK) add("enderecoPaciente");
   if (!atd.sintomas && !atd.examesProced) add("sintomasExames");
   if (!docs.some(d => !d.categoria || d.categoria === "anexo")) add("anexoGeral");
   return pendencias;
